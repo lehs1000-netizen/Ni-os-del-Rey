@@ -1,0 +1,6 @@
+{
+  "name": "Niños del Rey - Sistema de Puntuación y Asistencia",
+  "description": "Sistema de gestión para el club Niños del Rey con registro, asistencia semanal, puntuación por categorías y pantalla ganadora para Antorchas y Chispas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,469 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() {
+      return request.resource.data;
+    }
+    function existing() {
+      return resource.data;
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'lehs1000@gmail.com';
+    }
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+    function isClubMember(clubId) {
+      return isVerifiedUser() && exists(/databases/$(database)/documents/clubs/$(clubId)/members/$(request.auth.uid));
+    }
+    function isAuthorizedWriter(clubId) {
+      return isAdmin() || isClubMember(clubId);
+    }
+    function isSessionOpenOrAdmin(clubId, sessionId) {
+      return isAdmin() || (
+        (
+          exists(/databases/$(database)/documents/clubs/$(clubId)/sessions/$(sessionId)) &&
+          get(/databases/$(database)/documents/clubs/$(clubId)/sessions/$(sessionId)).data.status != 'completed'
+        ) || (
+          existsAfter(/databases/$(database)/documents/clubs/$(clubId)/sessions/$(sessionId)) &&
+          getAfter(/databases/$(database)/documents/clubs/$(clubId)/sessions/$(sessionId)).data.status != 'completed'
+        )
+      );
+    }
+
+    // 3. Entity Validation Helpers (Anti-Update-Gap)
+    function isValidClub(data, clubId) {
+      return data.keys().hasAll(['id', 'name', 'currentSessionId', 'soundEnabled', 'ownerEmail', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'currentSessionId', 'soundEnabled', 'ownerEmail', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.id == clubId && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.currentSessionId is string && data.currentSessionId.size() >= 1 && data.currentSessionId.size() <= 128
+        && data.soundEnabled is bool
+        && data.ownerEmail is string && data.ownerEmail.size() >= 3 && data.ownerEmail.size() <= 150
+        && data.isPublicClubData is bool && data.isPublicClubData == true
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateConfig(data, clubId) {
+      return data.keys().hasAll(['clubId', 'accessCode', 'authorizedEmails', 'updatedAt'])
+        && data.keys().hasOnly(['clubId', 'accessCode', 'authorizedEmails', 'updatedAt'])
+        && data.clubId == clubId
+        && data.accessCode is string && data.accessCode.size() >= 4 && data.accessCode.size() <= 32
+        && data.authorizedEmails is list && data.authorizedEmails.size() <= 50
+        && (data.authorizedEmails.size() == 0 || data.authorizedEmails[0] is string)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidContactsDoc(data, clubId) {
+      return data.keys().hasAll(['clubId', 'childContacts', 'leaderContacts', 'updatedAt'])
+        && data.keys().hasOnly(['clubId', 'childContacts', 'leaderContacts', 'updatedAt'])
+        && data.clubId == clubId
+        && data.childContacts is map
+        && data.leaderContacts is map
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMember(data, userId, clubId) {
+      return data.keys().hasAll(['uid', 'clubId', 'email', 'displayName', 'role', 'joinedAt'])
+        && data.keys().hasOnly(['uid', 'clubId', 'email', 'displayName', 'role', 'accessCode', 'joinedAt'])
+        && data.uid == userId && data.uid == request.auth.uid
+        && data.clubId == clubId
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && data.email == request.auth.token.email
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.role == 'collaborator'
+        && (!('accessCode' in data) || (data.accessCode is string && data.accessCode.size() <= 32))
+        && data.joinedAt is timestamp;
+    }
+
+    function isValidChild(data, clubId, childId) {
+      return data.keys().hasAll(['id', 'clubId', 'fullName', 'active', 'registeredDate', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'clubId', 'fullName', 'age', 'notes', 'active', 'registeredDate', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.id == childId && isValidId(data.id)
+        && data.clubId == clubId
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 150
+        && (!('age' in data) || (data.age is number && data.age >= 1 && data.age <= 99))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && data.active is bool
+        && data.registeredDate is string && data.registeredDate.size() >= 8 && data.registeredDate.size() <= 20
+        && data.isPublicClubData == true
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLeader(data, clubId, leaderId) {
+      return data.keys().hasAll(['id', 'clubId', 'fullName', 'active', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'clubId', 'fullName', 'role', 'active', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.id == leaderId && isValidId(data.id)
+        && data.clubId == clubId
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 150
+        && (!('role' in data) || (data.role is string && data.role.size() <= 100))
+        && data.active is bool
+        && data.isPublicClubData == true
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSession(data, clubId, sessionId) {
+      return data.keys().hasAll(['id', 'clubId', 'date', 'title', 'status', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'clubId', 'date', 'title', 'verse', 'notes', 'status', 'isPublicClubData', 'createdAt', 'updatedAt'])
+        && data.id == sessionId && isValidId(data.id)
+        && data.clubId == clubId
+        && data.date is string && data.date.size() >= 8 && data.date.size() <= 20
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 150
+        && (!('verse' in data) || (data.verse is string && data.verse.size() <= 250))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && data.status in ['active', 'completed']
+        && data.isPublicClubData == true
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAttendance(data, clubId, sessionId, childId) {
+      return data.keys().hasAll(['childId', 'clubId', 'sessionId', 'present', 'assignedTeamId', 'markedAt', 'isPublicClubData', 'updatedAt'])
+        && data.keys().hasOnly(['childId', 'clubId', 'sessionId', 'present', 'assignedTeamId', 'markedAt', 'isPublicClubData', 'updatedAt'])
+        && data.childId == childId && isValidId(data.childId)
+        && data.clubId == clubId
+        && data.sessionId == sessionId
+        && data.present is bool
+        && data.assignedTeamId in ['antorchas', 'chispas']
+        && data.markedAt is string && data.markedAt.size() >= 1 && data.markedAt.size() <= 40
+        && data.isPublicClubData == true
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLeaderAssignment(data, clubId, sessionId, leaderId) {
+      return data.keys().hasAll(['leaderId', 'clubId', 'sessionId', 'present', 'assignedTeamId', 'markedAt', 'isPublicClubData', 'updatedAt'])
+        && data.keys().hasOnly(['leaderId', 'clubId', 'sessionId', 'present', 'assignedTeamId', 'markedAt', 'isPublicClubData', 'updatedAt'])
+        && data.leaderId == leaderId && isValidId(data.leaderId)
+        && data.clubId == clubId
+        && data.sessionId == sessionId
+        && data.present is bool
+        && data.assignedTeamId in ['antorchas', 'chispas']
+        && data.markedAt is string && data.markedAt.size() >= 1 && data.markedAt.size() <= 40
+        && data.isPublicClubData == true
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLesson(data, clubId, sessionId, childId) {
+      return data.keys().hasAll(['childId', 'clubId', 'sessionId', 'learned', 'count', 'markedAt', 'isPublicClubData', 'updatedAt'])
+        && data.keys().hasOnly(['childId', 'clubId', 'sessionId', 'learned', 'count', 'markedAt', 'isPublicClubData', 'updatedAt'])
+        && data.childId == childId && isValidId(data.childId)
+        && data.clubId == clubId
+        && data.sessionId == sessionId
+        && data.learned is bool
+        && data.count is number && data.count >= 0 && data.count <= 100
+        && data.markedAt is string && data.markedAt.size() >= 1 && data.markedAt.size() <= 40
+        && data.isPublicClubData == true
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGameRound(data, clubId, sessionId) {
+      return data.keys().hasAll(['clubId', 'sessionId', 'roundNumber', 'name', 'antorchasScore', 'chispasScore', 'isPublicClubData', 'updatedAt'])
+        && data.keys().hasOnly(['clubId', 'sessionId', 'roundNumber', 'name', 'antorchasScore', 'chispasScore', 'isPublicClubData', 'updatedAt'])
+        && data.clubId == clubId
+        && data.sessionId == sessionId
+        && data.roundNumber is number && data.roundNumber >= 1 && data.roundNumber <= 3
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.antorchasScore is number
+        && data.chispasScore is number
+        && data.isPublicClubData == true
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuestion(data, clubId, sessionId, questionId) {
+      return data.keys().hasAll(['id', 'clubId', 'sessionId', 'teamId', 'isCorrect', 'points', 'questionNumber', 'timestamp', 'isPublicClubData', 'createdAt'])
+        && data.keys().hasOnly(['id', 'clubId', 'sessionId', 'teamId', 'isCorrect', 'points', 'questionNumber', 'timestamp', 'isPublicClubData', 'createdAt'])
+        && data.id == questionId && isValidId(data.id)
+        && data.clubId == clubId
+        && data.sessionId == sessionId
+        && data.teamId in ['antorchas', 'chispas']
+        && data.isCorrect is bool
+        && data.points in [20, -10]
+        && data.questionNumber is number && data.questionNumber >= 1
+        && data.timestamp is string && data.timestamp.size() >= 1 && data.timestamp.size() <= 20
+        && data.isPublicClubData == true
+        && data.createdAt is timestamp;
+    }
+
+    function isValidExtra(data, clubId, sessionId, extraId) {
+      return data.keys().hasAll(['id', 'clubId', 'sessionId', 'teamId', 'type', 'points', 'reason', 'timestamp', 'isPublicClubData', 'createdAt'])
+        && data.keys().hasOnly(['id', 'clubId', 'sessionId', 'teamId', 'type', 'points', 'reason', 'timestamp', 'isPublicClubData', 'createdAt'])
+        && data.id == extraId && isValidId(data.id)
+        && data.clubId == clubId
+        && data.sessionId == sessionId
+        && data.teamId in ['antorchas', 'chispas']
+        && data.type in ['extra', 'penalty']
+        && data.points is number && data.points >= 0
+        && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 300
+        && data.timestamp is string && data.timestamp.size() >= 1 && data.timestamp.size() <= 20
+        && data.isPublicClubData == true
+        && data.createdAt is timestamp;
+    }
+
+    // 4. Admins Collection
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isVerifiedUser() && (request.auth.uid == adminId || isBootstrappedAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    // 5. Club Root Document
+    match /clubs/{clubId} {
+      allow get: if isValidId(clubId) && (resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId));
+      allow list: if false;
+      allow create: if isValidId(clubId)
+        && isAdmin()
+        && isValidClub(incoming(), clubId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(clubId)
+        && isAuthorizedWriter(clubId)
+        && isValidClub(incoming(), clubId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().ownerEmail == existing().ownerEmail
+        && incoming().isPublicClubData == existing().isPublicClubData
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['currentSessionId', 'soundEnabled', 'updatedAt'])
+        );
+      allow delete: if false;
+
+      // 5a. Private Config (Access Code & Authorized Emails) - Admin only
+      match /private/config {
+        allow get: if isValidId(clubId) && isAdmin();
+        allow list: if false;
+        allow create, update: if isValidId(clubId)
+          && isAdmin()
+          && isValidPrivateConfig(incoming(), clubId)
+          && incoming().updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      // 5b. Private Contacts (PII: Guardian Names & Phones) - Authorized Leaders & Admin only
+      match /private/contacts {
+        allow get: if isValidId(clubId) && isAuthorizedWriter(clubId);
+        allow list: if false;
+        allow create, update: if isValidId(clubId)
+          && isAuthorizedWriter(clubId)
+          && isValidContactsDoc(incoming(), clubId)
+          && incoming().updatedAt == request.time;
+        allow delete: if false;
+      }
+
+      // 5c. Club Members (Collaborating Leaders)
+      match /members/{userId} {
+        allow get: if isValidId(clubId) && isValidId(userId) && isVerifiedUser() && (
+          request.auth.uid == userId || isAuthorizedWriter(clubId)
+        );
+        allow list: if isVerifiedUser() && resource.data.clubId == clubId && (
+          request.auth.token.email == 'lehs1000@gmail.com' || resource.data.uid == request.auth.uid
+        );
+        allow create: if isValidId(clubId) && isValidId(userId)
+          && isVerifiedUser()
+          && isValidMember(incoming(), userId, clubId)
+          && incoming().joinedAt == request.time
+          && (
+            isAdmin() || (
+              exists(/databases/$(database)/documents/clubs/$(clubId)/private/config) && (
+                (
+                  'accessCode' in incoming() &&
+                  incoming().accessCode == get(/databases/$(database)/documents/clubs/$(clubId)/private/config).data.accessCode
+                ) || (
+                  request.auth.token.email in get(/databases/$(database)/documents/clubs/$(clubId)/private/config).data.authorizedEmails
+                )
+              )
+            )
+          );
+        allow update: if false;
+        allow delete: if isValidId(clubId) && isValidId(userId) && isVerifiedUser() && (
+          isAdmin() || request.auth.uid == userId
+        );
+      }
+
+      // 5d. Children Roster (Non-PII)
+      match /children/{childId} {
+        allow get: if isValidId(clubId) && isValidId(childId) && (
+          resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+        );
+        allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+        allow create: if isValidId(clubId) && isValidId(childId)
+          && isAuthorizedWriter(clubId)
+          && isValidChild(incoming(), clubId, childId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(clubId) && isValidId(childId)
+          && isAuthorizedWriter(clubId)
+          && isValidChild(incoming(), clubId, childId)
+          && incoming().id == existing().id
+          && incoming().clubId == existing().clubId
+          && incoming().createdAt == existing().createdAt
+          && incoming().registeredDate == existing().registeredDate
+          && incoming().isPublicClubData == existing().isPublicClubData
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'age', 'notes', 'active', 'updatedAt']);
+        allow delete: if isValidId(clubId) && isValidId(childId) && isAuthorizedWriter(clubId);
+      }
+
+      // 5e. Leaders Roster (Non-PII)
+      match /leaders/{leaderId} {
+        allow get: if isValidId(clubId) && isValidId(leaderId) && (
+          resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+        );
+        allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+        allow create: if isValidId(clubId) && isValidId(leaderId)
+          && isAuthorizedWriter(clubId)
+          && isValidLeader(incoming(), clubId, leaderId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(clubId) && isValidId(leaderId)
+          && isAuthorizedWriter(clubId)
+          && isValidLeader(incoming(), clubId, leaderId)
+          && incoming().id == existing().id
+          && incoming().clubId == existing().clubId
+          && incoming().createdAt == existing().createdAt
+          && incoming().isPublicClubData == existing().isPublicClubData
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'role', 'active', 'updatedAt']);
+        allow delete: if isValidId(clubId) && isValidId(leaderId) && isAuthorizedWriter(clubId);
+      }
+
+      // 5f. Weekly Sessions
+      match /sessions/{sessionId} {
+        allow get: if isValidId(clubId) && isValidId(sessionId) && (
+          resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+        );
+        allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+        allow create: if isValidId(clubId) && isValidId(sessionId)
+          && isAuthorizedWriter(clubId)
+          && isValidSession(incoming(), clubId, sessionId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(clubId) && isValidId(sessionId)
+          && isAuthorizedWriter(clubId)
+          && isValidSession(incoming(), clubId, sessionId)
+          && (existing().status != 'completed' || isAdmin())
+          && incoming().id == existing().id
+          && incoming().clubId == existing().clubId
+          && incoming().createdAt == existing().createdAt
+          && incoming().isPublicClubData == existing().isPublicClubData
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin() ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['title', 'verse', 'notes', 'status', 'updatedAt'])
+          );
+        allow delete: if isValidId(clubId) && isValidId(sessionId) && isAdmin();
+
+        // Attendance Subcollection
+        match /attendance/{childId} {
+          allow get: if isValidId(clubId) && isValidId(sessionId) && isValidId(childId) && (
+            resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+          );
+          allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+          allow create, update: if isValidId(clubId) && isValidId(sessionId) && isValidId(childId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId)
+            && isValidAttendance(incoming(), clubId, sessionId, childId)
+            && incoming().updatedAt == request.time;
+          allow delete: if isValidId(clubId) && isValidId(sessionId) && isValidId(childId) && isAuthorizedWriter(clubId);
+        }
+
+        // Leader Assignments Subcollection
+        match /leaderAssignments/{leaderId} {
+          allow get: if isValidId(clubId) && isValidId(sessionId) && isValidId(leaderId) && (
+            resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+          );
+          allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+          allow create, update: if isValidId(clubId) && isValidId(sessionId) && isValidId(leaderId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId)
+            && isValidLeaderAssignment(incoming(), clubId, sessionId, leaderId)
+            && incoming().updatedAt == request.time;
+          allow delete: if isValidId(clubId) && isValidId(sessionId) && isValidId(leaderId) && isAuthorizedWriter(clubId);
+        }
+
+        // Lessons Subcollection
+        match /lessons/{childId} {
+          allow get: if isValidId(clubId) && isValidId(sessionId) && isValidId(childId) && (
+            resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+          );
+          allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+          allow create, update: if isValidId(clubId) && isValidId(sessionId) && isValidId(childId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId)
+            && isValidLesson(incoming(), clubId, sessionId, childId)
+            && incoming().updatedAt == request.time;
+          allow delete: if isValidId(clubId) && isValidId(sessionId) && isValidId(childId) && isAuthorizedWriter(clubId);
+        }
+
+        // Game Rounds Subcollection
+        match /gameRounds/{roundId} {
+          allow get: if isValidId(clubId) && isValidId(sessionId) && isValidId(roundId) && (
+            resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+          );
+          allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+          allow create, update: if isValidId(clubId) && isValidId(sessionId) && isValidId(roundId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId)
+            && isValidGameRound(incoming(), clubId, sessionId)
+            && incoming().updatedAt == request.time;
+          allow delete: if isValidId(clubId) && isValidId(sessionId) && isValidId(roundId) && isAuthorizedWriter(clubId);
+        }
+
+        // Questions Subcollection
+        match /questions/{questionId} {
+          allow get: if isValidId(clubId) && isValidId(sessionId) && isValidId(questionId) && (
+            resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+          );
+          allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+          allow create: if isValidId(clubId) && isValidId(sessionId) && isValidId(questionId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId)
+            && isValidQuestion(incoming(), clubId, sessionId, questionId)
+            && incoming().createdAt == request.time;
+          allow update: if false;
+          allow delete: if isValidId(clubId) && isValidId(sessionId) && isValidId(questionId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId);
+        }
+
+        // Extras & Penalties Subcollection
+        match /extras/{extraId} {
+          allow get: if isValidId(clubId) && isValidId(sessionId) && isValidId(extraId) && (
+            resource == null || existing().isPublicClubData == true || isAuthorizedWriter(clubId)
+          );
+          allow list: if resource.data.clubId == clubId && resource.data.isPublicClubData == true;
+          allow create: if isValidId(clubId) && isValidId(sessionId) && isValidId(extraId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId)
+            && isValidExtra(incoming(), clubId, sessionId, extraId)
+            && incoming().createdAt == request.time;
+          allow update: if false;
+          allow delete: if isValidId(clubId) && isValidId(sessionId) && isValidId(extraId)
+            && isAuthorizedWriter(clubId)
+            && isSessionOpenOrAdmin(clubId, sessionId);
+        }
+      }
+    }
+  }
+}

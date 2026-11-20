@@ -1,0 +1,280 @@
+{
+  "entities": {
+    "Club": {
+      "title": "Club",
+      "description": "Configuración principal del Club Niños del Rey compartida en tiempo real",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "currentSessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "soundEnabled": { "type": "boolean" },
+        "ownerEmail": { "type": "string", "maxLength": 150 },
+        "isPublicClubData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "currentSessionId", "soundEnabled", "ownerEmail", "isPublicClubData", "createdAt", "updatedAt"]
+    },
+    "ClubPrivateConfig": {
+      "title": "ClubPrivateConfig",
+      "description": "Configuración privada del club con código de acceso para colaboradores",
+      "type": "object",
+      "properties": {
+        "clubId": { "type": "string", "maxLength": 128 },
+        "accessCode": { "type": "string", "minLength": 4, "maxLength": 32 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clubId", "accessCode", "updatedAt"]
+    },
+    "ClubContacts": {
+      "title": "ClubContacts",
+      "description": "Información privada de contacto (PII) de tutores y líderes restringida a líderes autorizados",
+      "type": "object",
+      "properties": {
+        "clubId": { "type": "string", "maxLength": 128 },
+        "childContacts": { "type": "object" },
+        "leaderContacts": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clubId", "childContacts", "leaderContacts", "updatedAt"]
+    },
+    "ClubMember": {
+      "title": "ClubMember",
+      "description": "Líder o colaborador autorizado para registrar y modificar datos del club",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 150 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["collaborator"] },
+        "accessCode": { "type": "string", "maxLength": 32 },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "clubId", "email", "displayName", "role", "joinedAt"]
+    },
+    "ClubInvite": {
+      "title": "ClubInvite",
+      "description": "Correo pre-autorizado por el administrador del club",
+      "type": "object",
+      "properties": {
+        "clubId": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 150 },
+        "addedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clubId", "email", "addedBy", "createdAt"]
+    },
+    "Child": {
+      "title": "Child",
+      "description": "Registro público de niño perteneciente al club (sin datos PII)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "age": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "active": { "type": "boolean" },
+        "registeredDate": { "type": "string", "maxLength": 20 },
+        "isPublicClubData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clubId", "fullName", "active", "registeredDate", "isPublicClubData", "createdAt", "updatedAt"]
+    },
+    "Leader": {
+      "title": "Leader",
+      "description": "Registro público de líder del club (sin datos PII)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "role": { "type": "string", "maxLength": 100 },
+        "active": { "type": "boolean" },
+        "isPublicClubData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clubId", "fullName", "active", "isPublicClubData", "createdAt", "updatedAt"]
+    },
+    "WeeklySession": {
+      "title": "WeeklySession",
+      "description": "Sesión semanal (sábado) del programa Niños del Rey",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 20 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "verse": { "type": "string", "maxLength": 250 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["active", "completed"] },
+        "isPublicClubData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clubId", "date", "title", "status", "isPublicClubData", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Asistencia y equipo asignado para un niño en una sesión semanal",
+      "type": "object",
+      "properties": {
+        "childId": { "type": "string", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "present": { "type": "boolean" },
+        "assignedTeamId": { "type": "string", "enum": ["antorchas", "chispas"] },
+        "markedAt": { "type": "string", "maxLength": 40 },
+        "isPublicClubData": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["childId", "clubId", "sessionId", "present", "assignedTeamId", "markedAt", "isPublicClubData", "updatedAt"]
+    },
+    "LeaderAssignmentRecord": {
+      "title": "LeaderAssignmentRecord",
+      "description": "Asistencia y equipo asignado para un líder en una sesión semanal",
+      "type": "object",
+      "properties": {
+        "leaderId": { "type": "string", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "present": { "type": "boolean" },
+        "assignedTeamId": { "type": "string", "enum": ["antorchas", "chispas"] },
+        "markedAt": { "type": "string", "maxLength": 40 },
+        "isPublicClubData": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["leaderId", "clubId", "sessionId", "present", "assignedTeamId", "markedAt", "isPublicClubData", "updatedAt"]
+    },
+    "LessonRecord": {
+      "title": "LessonRecord",
+      "description": "Conteo de lecciones aprendidas por un niño en la sesión (x20 puntos)",
+      "type": "object",
+      "properties": {
+        "childId": { "type": "string", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "learned": { "type": "boolean" },
+        "count": { "type": "number" },
+        "markedAt": { "type": "string", "maxLength": 40 },
+        "isPublicClubData": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["childId", "clubId", "sessionId", "learned", "count", "markedAt", "isPublicClubData", "updatedAt"]
+    },
+    "GameRound": {
+      "title": "GameRound",
+      "description": "Ronda de juegos de la sesión semanal con puntaje por equipo",
+      "type": "object",
+      "properties": {
+        "clubId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "roundNumber": { "type": "number" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "antorchasScore": { "type": "number" },
+        "chispasScore": { "type": "number" },
+        "isPublicClubData": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clubId", "sessionId", "roundNumber", "name", "antorchasScore", "chispasScore", "isPublicClubData", "updatedAt"]
+    },
+    "QuestionEvent": {
+      "title": "QuestionEvent",
+      "description": "Evento de pregunta rápida (+20 correcta / -10 incorrecta)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "teamId": { "type": "string", "enum": ["antorchas", "chispas"] },
+        "isCorrect": { "type": "boolean" },
+        "points": { "type": "number" },
+        "questionNumber": { "type": "number" },
+        "timestamp": { "type": "string", "maxLength": 20 },
+        "isPublicClubData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clubId", "sessionId", "teamId", "isCorrect", "points", "questionNumber", "timestamp", "isPublicClubData", "createdAt"]
+    },
+    "ExtraScoreEvent": {
+      "title": "ExtraScoreEvent",
+      "description": "Bonificación extra o penalización detallada con motivo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "clubId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "teamId": { "type": "string", "enum": ["antorchas", "chispas"] },
+        "type": { "type": "string", "enum": ["extra", "penalty"] },
+        "points": { "type": "number" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "timestamp": { "type": "string", "maxLength": 20 },
+        "isPublicClubData": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clubId", "sessionId", "teamId", "type", "points", "reason", "timestamp", "isPublicClubData", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/clubs/{clubId}": {
+      "schema": { "$ref": "#/entities/Club" },
+      "description": "Documento raíz de configuración del club Niños del Rey"
+    },
+    "/clubs/{clubId}/private/config": {
+      "schema": { "$ref": "#/entities/ClubPrivateConfig" },
+      "description": "Código de acceso privado para validar nuevos líderes colaboradores"
+    },
+    "/clubs/{clubId}/private/contacts": {
+      "schema": { "$ref": "#/entities/ClubContacts" },
+      "description": "Datos de contacto PII de tutores y líderes restringidos a miembros autorizados"
+    },
+    "/clubs/{clubId}/members/{userId}": {
+      "schema": { "$ref": "#/entities/ClubMember" },
+      "description": "Líderes autenticados autorizados para editar datos del club"
+    },
+    "/clubs/{clubId}/invites/{inviteEmail}": {
+      "schema": { "$ref": "#/entities/ClubInvite" },
+      "description": "Correos invitados por el administrador"
+    },
+    "/clubs/{clubId}/children/{childId}": {
+      "schema": { "$ref": "#/entities/Child" },
+      "description": "Registro de niños del club"
+    },
+    "/clubs/{clubId}/leaders/{leaderId}": {
+      "schema": { "$ref": "#/entities/Leader" },
+      "description": "Registro de líderes del club"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/WeeklySession" },
+      "description": "Sesiones semanales (sábados)"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}/attendance/{childId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Asistencia y asignación de equipo de niños por sesión"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}/leaderAssignments/{leaderId}": {
+      "schema": { "$ref": "#/entities/LeaderAssignmentRecord" },
+      "description": "Asistencia y asignación de equipo de líderes por sesión"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}/lessons/{childId}": {
+      "schema": { "$ref": "#/entities/LessonRecord" },
+      "description": "Lecciones aprendidas por niño en la sesión"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}/gameRounds/{roundId}": {
+      "schema": { "$ref": "#/entities/GameRound" },
+      "description": "Rondas de juego por sesión"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/QuestionEvent" },
+      "description": "Eventos de preguntas rápidas por sesión"
+    },
+    "/clubs/{clubId}/sessions/{sessionId}/extras/{extraId}": {
+      "schema": { "$ref": "#/entities/ExtraScoreEvent" },
+      "description": "Bonificaciones extras y penalizaciones por sesión"
+    }
+  }
+}
